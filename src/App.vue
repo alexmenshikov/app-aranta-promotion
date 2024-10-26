@@ -1,7 +1,7 @@
 <script setup>
 import axios from "axios";
 import CardCampaign from "./components/CardCampaign.vue";
-import {computed, ref, watch} from "vue";
+import {computed, onMounted, ref, watch} from "vue";
 import {
   Col as ACol,
   ConfigProvider as AConfigProvider,
@@ -9,7 +9,12 @@ import {
   FormItem as AFormItem,
   Row as ARow,
   Select as ASelect,
+  Button as AButton,
+  message,
 } from "ant-design-vue";
+import {
+  ReloadOutlined
+} from "@ant-design/icons-vue"
 import ruRu from "ant-design-vue/es/locale/ru_RU";
 import dayjs from "dayjs";
 import ru from "dayjs/locale/ru";
@@ -35,6 +40,16 @@ const transformedCompanyOptions = computed(() => {
 
 const companyOptions = ref([]);
 const companySelected = ref(JSON.stringify(companyArray[0]));
+const loading = ref(false);
+const disabledUpdateCampaign = ref(false);
+
+watch(disabledUpdateCampaign, (newValue) => {
+  if (newValue) {
+    setTimeout(function () {
+      disabledUpdateCampaign.value = false;
+    }, 180000);
+  }
+});
 
 // watch(companySelected, (newValue, oldValue) => {
   // localStorage.setItem("company_selected_feedbacks", JSON.stringify(newValue));
@@ -49,8 +64,8 @@ const companySelected = ref(JSON.stringify(companyArray[0]));
 companyOptions.value = transformedCompanyOptions.value;
 const transformedCompanySelected = computed(() => JSON.parse(companySelected.value));
 
-const listCampaignsIds = ref({ ids: [], objectIds: [] });
-const listInformationAboutCampaigns = ref([]);
+// const listCampaignsIds = ref({ ids: [], objectIds: [] });
+const campaigns = ref([]);
 
 function convertCampaignsType(value) {
   const campaignTypes = {
@@ -76,6 +91,8 @@ function convertCampaignsStatus(value) {
 
 // Функция для получения бюджета
 async function getCampaignBudget(id) {
+  const loadingMessage = message.loading(`Получение бюджета у кампании ${id}`, 0);
+
   return axios
     .get(`https://advert-api.wildberries.ru/adv/v1/budget?id=${id}`, {
       headers: {
@@ -85,17 +102,24 @@ async function getCampaignBudget(id) {
     .then(response => response.data.total)
     .catch(error => {
       console.log("getCampaignBudget: ", error);
+      loadingMessage();
+      message.error(`Ошибка при загрузке бюджета у кампании ${id}`);
       return null;
+    })
+    .finally(() => {
+      loadingMessage();
     });
 }
 
-async function updateCampaignBudgets(campaignIds) {
+async function updateCampaignBudgets(campaignsValue) {
+  const campaignIds = campaignsValue.map(campaign => campaign.advertId);
+
   // Перебираем каждый элемент newIds и обновляем budget
   for (const id of campaignIds) {
     const budget = await getCampaignBudget(id);
 
-    // Находим объект в listInformationAboutCampaigns с совпадающим advertId
-    const campaign = listInformationAboutCampaigns.value.find(
+    // Находим объект в campaigns с совпадающим advertId
+    const campaign = campaigns.value.find(
       item => item.advertId === id
     );
 
@@ -106,7 +130,11 @@ async function updateCampaignBudgets(campaignIds) {
 }
 
 // Функция для получения CTR
-async function updateCampaignCtr(campaignIds) {
+async function updateCampaignCtr(campaignsValue) {
+  const campaignIds = campaignsValue.map(campaign => ({ id: campaign.advertId }));
+  const loadingMessage = message.loading('Получение CTR для кампаний', 0);
+  loading.value = true;
+
   axios
     .post("https://advert-api.wildberries.ru/adv/v2/fullstats", campaignIds,{
       headers: {
@@ -115,8 +143,8 @@ async function updateCampaignCtr(campaignIds) {
     })
     .then(response => {
       for (const element of response.data) {
-        // Находим объект в listInformationAboutCampaigns с совпадающим advertId
-        const campaign = listInformationAboutCampaigns.value.find(
+        // Находим объект в campaigns с совпадающим advertId
+        const campaign = campaigns.value.find(
           item => item.advertId === element.advertId
         );
 
@@ -125,14 +153,25 @@ async function updateCampaignCtr(campaignIds) {
           campaign.views = element.views;
         }
       }
+
+      loading.value = false;
     })
     .catch(error => {
       console.log("getCampaignCtr: ", error);
+      loading.value = false;
+      loadingMessage();
+      message.error("Ошибка при загрузке CTR");
+    })
+    .finally(() => {
+    loadingMessage();
     });
 }
 
 // Функция для получения информации о компаниях
-async function getInformationAboutCampaigns(campaignIds) {
+async function getInformationAboutCampaigns(campaignsValue) {
+  const campaignIds = campaignsValue.map(campaign => campaign.advertId);
+  const loadingMessage = message.loading('Загрузка информации о кампаниях', 0);
+
   try {
     const response = await axios.post("https://advert-api.wildberries.ru/adv/v1/promotion/adverts", campaignIds, {
         headers: {
@@ -141,133 +180,81 @@ async function getInformationAboutCampaigns(campaignIds) {
       }
     );
 
-    listInformationAboutCampaigns.value = response.data.map(item => ({
-      name: item.name,
-      advertId: item.advertId,
-      type: {
-        original: item.type,
-        convert: convertCampaignsType(item.type),
-      },
-      status: {
-        original: item.status,
-        convert: convertCampaignsStatus(item.status),
-      },
-      cpm: item.type === 8 ? item.autoParams.nmCPM[0].cpm : item.unitedParams[0].searchCPM,
-      budget: null,
-      ctr: null,
-      views: null,
-    }));
+    response.data.forEach(newItem => {
+      const campaign = campaigns.value.find(item => item.advertId === newItem.advertId);
+      if (campaign) {
+        campaign.name = newItem.name;
+        campaign.type.original = newItem.type;
+        campaign.type = {
+          original: newItem.type,
+          convert: convertCampaignsType(newItem.type)
+        };
+        campaign.status = {
+          original: newItem.status,
+          convert: convertCampaignsStatus(newItem.status)
+        };
+        // campaign.cpm = newItem.unitedParams ? newItem.unitedParams[0].catalogCPM : newItem.autoParams.cpm;
+        // campaign.budget = newItem.dailyBudget;
+        campaign.updated = new Date().toISOString();
+        // campaign.enabled = newItem.searchPluseState || newItem.autoParams.active.carousel;
+        // campaign.impressions = newItem.unitedParams ? newItem.unitedParams[0].searchCPM : newItem.autoParams.nmCPM[0].cpm;
+      }
+    });
+    // campaigns.value = response.data.map(item => ({
+    //   name: item.name,
+    //   advertId: item.advertId,
+    //   type: {
+    //     original: item.type,
+    //     convert: convertCampaignsType(item.type),
+    //   },
+    //   status: {
+    //     original: item.status,
+    //     convert: convertCampaignsStatus(item.status),
+    //   },
+    //   cpm: item.type === 8 ? item.autoParams.nmCPM[0].cpm : item.unitedParams[0].searchCPM,
+    //   budget: null,
+    //   ctr: null,
+    //   views: null,
+    //   // updated: dayjs.utc().local().format("DD.MM.YYYY HH:mm"),
+    //   updated: new Date().toISOString(),
+    //   enabled: false,
+    //   impressions: null,
+    //   interval: {
+    //     value: 15,
+    //     repeat: 4
+    //   },
+    // }));
   } catch (error) {
     console.error("getInformationAboutCampaigns", error);
+    loadingMessage();
+    message.error("Ошибка при загрузке информации о кампаниях");
+  } finally {
+    loadingMessage();
   }
 }
 
 // Следим за изменениями в listCampaignsIds, если нужно автоматически вызывать вторую функцию
-watch(() => listCampaignsIds.value.ids, (newIds) => {
-    if (newIds.length > 0) {
-      // Вызов getInformationAboutCampaigns с заполненными данными
-      getInformationAboutCampaigns(newIds);
-      updateCampaignBudgets(newIds);
-    }
-  }
-);
-
-watch(() => listCampaignsIds.value.objectIds, (newIds) => {
-    if (newIds.length > 0) {
-      // Вызов getInformationAboutCampaigns с заполненными данными
-      // getInformationAboutCampaigns(newIds);
-      // updateCampaignBudgets(newIds);
-      updateCampaignCtr(newIds);
-    }
-  }
-);
-
-  // axios
-  //   .post("https://advert-api.wildberries.ru/adv/v1/promotion/adverts", campaignIds,{
-  //     headers: {
-  //       Authorization: `${transformedCompanySelected.value.apiToken}`
-  //     }
-  //   })
-  //   .then(response => {
-  //     listInformationAboutCampaigns.value = response.data.map(item => ({
-  //       name: item.name,
-  //       advertId: item.advertId,
-  //       type: {
-  //         original: item.type,
-  //         convert: convertCampaignsType(item.type),
-  //       },
-  //       status: {
-  //         original: item.status,
-  //         convert: convertCampaignsStatus(item.status),
-  //       },
-  //       cpm: item.type === 8 ? item.autoParams.nmCPM[0].cpm : item.unitedParams[0].searchCPM,
-  //       budget: null,
-  //       ctr: null,
-  //     }));
-  //   })
-  //   .catch(error => {
-  //     console.log(error);
-  //     // message.error('Ошибка при загрузке отзывов!');
-  //     // loading.value = false;
-  //   });
-// }
-
-// Функция для обновления CTR
-// async function updateCampaignCtr() {
-//   const campaignIds = listInformationAboutCampaigns.value.map(campaign => ({
-//     id: campaign.advertId
-//   }));
+// watch(() => listCampaignsIds.value.ids, (newIds) => {
+//     if (newIds.length > 0) {
+//       // Вызов getInformationAboutCampaigns с заполненными данными
+//       getInformationAboutCampaigns(newIds);
+//       updateCampaignBudgets(newIds);
+//     }
+//   }
+// );
 //
-//   const response = await getCampaignCtr(campaignIds);
-//
-//   console.log("response", response);
-  // if (response) {
-    // listInformationAboutCampaigns.value.forEach(campaign => {
-    //   const matchingCampaign = response.find(item => item.advertId === campaign.advertId);
-    //
-    //   console.log("campaign", campaign);
-    //   if (matchingCampaign) {
-    //     campaign.ctr = matchingCampaign.ctr;
-    //   }
-    // });
-
-    // Создаем новый массив с обновленными данными
-    // const updatedCampaigns = listInformationAboutCampaigns.value.map(campaign => {
-    //   const matchingCampaign = response.find(item => item.advertId === campaign.advertId);
-    //   if (matchingCampaign) {
-    //     return { ...campaign, ctr: matchingCampaign.ctr, test: "test" };
-    //   }
-    //   return campaign;
-    // });
-
-    // Обновляем массив целиком
-    // listInformationAboutCampaigns.value = updatedCampaigns
-  // }
-// }
-
-// watch(listInformationAboutCampaigns, async (newCampaigns) => {
-//   await Promise.all(newCampaigns.map(async (item, index) => {
-//     listInformationAboutCampaigns.value[index].budget = await getCampaignBudget(item.advertId);
-//   }));
-//
-//   // const campaignIds = listInformationAboutCampaigns.value.map((item) => ({
-//   //   id: item.advertId,
-//   // }))
-//
-//   await updateCampaignCtr();
-// });
-
-// watch(listInformationAboutCampaigns, (newCampaigns) => {
-//   newCampaigns.forEach((item, index) => {
-//     getCampaignBudget(item.advertId).then(budget => {
-//       listInformationAboutCampaigns.value[index].budget = budget;
-//     });
-//   });
-// });
+// watch(() => listCampaignsIds.value.objectIds, (newIds) => {
+//     if (newIds.length > 0) {
+//       updateCampaignCtr(newIds);
+//     }
+//   }
+// );
 
 // Функция для получения кампаний
 async function getListOfCampaigns() {
-  listCampaignsIds.value = { ids: [], objectIds: [] };
+  const loadingMessage = message.loading('Загрузка кампаний', 0);
+  loading.value = true;
+  disabledUpdateCampaign.value = true;
 
   try {
     const response = await axios.get("https://advert-api.wildberries.ru/adv/v1/promotion/count", {
@@ -277,50 +264,166 @@ async function getListOfCampaigns() {
       }
     );
 
-    const listIds = response.data.adverts.flatMap((advert) =>
+    const advertListIds = response.data.adverts.flatMap((advert) =>
       advert.advert_list.map((item) => item.advertId)
     );
 
-    const listObjectIds = response.data.adverts.flatMap((advert) =>
-      advert.advert_list.map((item) => ({ id: item.advertId }))
-    );
-
-    listCampaignsIds.value.ids = listIds;
-    listCampaignsIds.value.objectIds = listObjectIds;
+    campaigns.value = advertListIds.map(advertId => ({
+      name: null,
+      advertId: advertId,
+      type: {
+        original: null,
+        convert: null,
+      },
+      status: {
+        original: null,
+        convert: null,
+      },
+      cpm: null,
+      budget: null,
+      ctr: null,
+      views: null,
+      updated: null,
+      enabled: false,
+      impressions: null,
+      interval: 15,
+    }));
+    loading.value = false;
   } catch (error) {
+    loadingMessage();
+    message.error("Ошибка при загрузке кампаний");
     console.error("getListOfCampaigns", error);
+    loading.value = false;
+  } finally {
+    loadingMessage();
   }
-  // axios
-  //   .get("https://advert-api.wildberries.ru/adv/v1/promotion/count", {
-  //     headers: {
-  //       Authorization: `${transformedCompanySelected.value.apiToken}`
-  //     }
-  //   })
-  //   .then(response => {
-  //     listIds = response.data.adverts.flatMap(advert =>
-  //       advert.advert_list.map(item => item.advertId)
-  //     );
-  //
-  //     listObjectIds = response.data.adverts.flatMap(advert =>
-  //       advert.advert_list.map(item => ({ id: item.advertId }))
-  //     );
-  //
-  //     console.log("listIds ", listIds);
-  //     console.log("listObjectIds ", listObjectIds);
-  //
-  //     listCampaignsIds.value.ids = listIds;
-  //     listCampaignsIds.value.objectIds = listObjectIds;
-  //     // getInformationAboutCampaigns(listCampaignsIds.value);
-  //     // loading.value = false;
-  //   })
-  //   .catch(error => {
-  //     console.log("getListOfCampaigns", error);
-  //     // message.error('Ошибка при загрузке отзывов!');
-  //     // loading.value = false;
-  //   });
 }
 
-getListOfCampaigns();
+onMounted(() => {
+  getListOfCampaigns();
+});
+
+watch(campaigns, (newCampaigns, oldCampaigns) => {
+    if (newCampaigns.length > 0 && newCampaigns !== oldCampaigns) {
+      getInformationAboutCampaigns(newCampaigns);
+      updateCampaignBudgets(newCampaigns);
+      // updateCampaignCtr(newCampaigns);
+    }
+  }
+);
+
+const launchedCampaigns = ref([]);
+
+// Функция для обновления состояния enabled
+function updateCampaignEnabled(id, enabled) {
+  const index = campaigns.value.findIndex(c => c.advertId === id);
+  if (index !== -1) {
+    // Перезаписываем объект кампании целиком
+    campaigns.value[index] = {
+      ...campaigns.value[index],
+      enabled: enabled,  // Обновляем свойство enabled
+    };
+  }
+
+  const campaign = launchedCampaigns.value.find(c => c.advertId === id);
+
+  if (!campaign && enabled) {
+    launchedCampaigns.value.push({
+      advertId: id,
+    })
+  } else if (campaign && !enabled) {
+    const index = launchedCampaigns.value.findIndex(c => c.advertId === id);
+    if (index !== -1) {
+      launchedCampaigns.value.splice(index, 1); // Удаляем элемент по индексу
+    }
+  }
+}
+
+watch(launchedCampaigns, (newCampaigns) => {
+  const newCampaignsIds = newCampaigns.map(c => c.advertId);
+  const matchingCampaigns = campaigns.value.filter(c => newCampaignsIds.includes(c.advertId));
+
+  const groupedCampaigns = matchingCampaigns.reduce((groups, campaign) => {
+    const interval = campaign.interval;
+    if (!groups[interval]) {
+      groups[interval] = [];
+    }
+    groups[interval].push(campaign);
+    return groups;
+  }, {});
+
+// Функция start для запуска задач
+  function start(campaignsGroup) {
+    getInformationAboutCampaigns(campaignsGroup);
+    updateCampaignBudgets(campaignsGroup);
+    // console.log(new Date().getMinutes(), campaignsGroup);
+    // campaignsGroup.forEach(campaign => {
+    //   console.log(`Запуск для объекта с id: ${campaign.id}, интервал: ${campaign.interval}`);
+    //   // Здесь разместите логику запуска для каждого объекта
+    // });
+  }
+
+// Функция, которая проверяет текущее время
+  function checkTimeAndRun() {
+    const now = new Date();
+    const minutes = now.getMinutes();
+
+    // Проходим по всем группам интервалов
+    for (const interval in groupedCampaigns) {
+      const campaignsGroup = groupedCampaigns[interval];
+
+      // Если текущее время кратно интервалу, запускаем start для этой группы
+      if (minutes % interval === 0) {
+        start(campaignsGroup);
+      }
+    }
+  }
+
+// Устанавливаем интервал проверки каждую минуту
+  setInterval(checkTimeAndRun, 60000);
+}, { deep: true });
+
+
+
+// Функция для обновления количества показов
+const updateCampaignImpressions = (id, value) => {
+  const index = campaigns.value.findIndex(c => c.advertId === id);
+  if (index !== -1) {
+    // Перезаписываем объект кампании целиком
+    campaigns.value[index] = {
+      ...campaigns.value[index],
+      impressions: value,  // Обновляем свойство impressions
+    };
+  }
+};
+
+// Функция для обновления интервала
+const updateCampaignInterval = (id, value) => {
+  const index = campaigns.value.findIndex(c => c.advertId === id);
+  if (index !== -1) {
+    // Перезаписываем объект кампании целиком
+    campaigns.value[index] = {
+      ...campaigns.value[index],
+      interval: { // Обновляем свойство interval
+        value: value,
+        repeat: value && 60 / value,
+      },
+    };
+  }
+};
+
+const updateCampaignUpdated = (id, value) => {
+  const index = campaigns.value.findIndex(c => c.advertId === id);
+  if (index !== -1) {
+    // Перезаписываем объект кампании целиком
+    campaigns.value[index] = {
+      ...campaigns.value[index],
+      updated: value,
+    };
+
+    updateCampaignBudgets([id]);
+  }
+}
 </script>
 
 <template>
@@ -335,19 +438,32 @@ getListOfCampaigns();
             />
           </a-form-item>
         </a-col>
+        <a-col :span="4">
+          <a-button
+            @click="getListOfCampaigns"
+            :disabled="disabledUpdateCampaign"
+            style="margin-top: 30px;"
+            block
+          >
+            <ReloadOutlined /> Обновить кампании
+          </a-button>
+        </a-col>
       </a-row>
     </a-form>
-  </a-config-provider>
 
-<!--  <HelloWorld msg="Vite + Vue" />-->
-  <div class="campaign-list">
-<!--    <div>id - {{ campaign.advertId }}</div>-->
-<!--    <div>название - {{ campaign.name }}</div>-->
-<!--    <div>тип компании - {{ campaign.type.convert }}</div>-->
-<!--    <div>статус - {{ campaign.status.convert }}</div>-->
-<!--    <div>текущая ставка {{ campaign.currentRate }}</div>-->
-    <CardCampaign v-for="campaign in listInformationAboutCampaigns" :key="campaign.advertId" :campaign="campaign" />
-  </div>
+    <div class="campaign-list">
+      <CardCampaign
+        v-for="campaign in campaigns"
+        :key="campaign.advertId"
+        :campaign="campaign"
+        :loading="loading"
+        @updateEnabled="updateCampaignEnabled(campaign.advertId, $event)"
+        @updateImpressions="updateCampaignImpressions(campaign.advertId, $event)"
+        @updateInterval="updateCampaignInterval(campaign.advertId, $event)"
+        @updateUpdated="updateCampaignUpdated(campaign.advertId, $event)"
+      />
+    </div>
+  </a-config-provider>
 </template>
 
 <style scoped>
