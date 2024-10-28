@@ -117,11 +117,11 @@ const emitIntervalChange = (value) => {
       <div v-else class="content">
         <div class="info">
           <span v-if="campaign.type.convert" class="grey">{{ campaign.type.convert }}</span>
-          <span v-if="campaign.advertId" class="grey">ID {{ campaign.advertId }}</span>
-          <span v-if="campaign.cpm" class="grey">Текущая ставка {{ formatNumberWithSpacesAndSymbol(campaign.cpm) }}</span>
+          <span class="grey">ID {{ campaign.advertId }}</span>
+          <span class="grey">Текущая ставка {{ formatNumberWithSpacesAndSymbol(campaign.cpm) }}</span>
           <span class="grey">Бюджет {{ formatNumberWithSpacesAndSymbol(campaign.budget) }}</span>
-          <span v-if="campaign.ctr" class="grey">CTR {{ campaign.ctr }}</span>
-          <span v-if="campaign.views" class="grey">Показы {{ campaign.views }}</span>
+          <span v-if="campaign.status.original !== 11" class="grey">CTR {{ campaign.ctr }}</span>
+          <span v-if="campaign.status.original !== 11" class="grey">Показы {{ campaign.views }}</span>
           <span>
             <a-tag :bordered="false" :color="getTagColorStatus(campaign.status.original)">{{ campaign.status.convert }}</a-tag>
           </span>

@@ -29,6 +29,11 @@ const companyArray = [
     name: "Ne Vi (WB)",
     apiToken: "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjQxMDE2djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc0NDkxOTQzNiwiaWQiOiIwMTkyOTk3NS0wODQzLTdhM2EtYTJiNS1kN2VjODUyZTBmNjYiLCJpaWQiOjE5NjI0NzM2LCJvaWQiOjQxMjc0NjcsInMiOjk2LCJzaWQiOiI4NGI5ZDZkMy0wMTEyLTQwYmYtOTE2Yi1lZWQxZDhmNzYwYTUiLCJ0IjpmYWxzZSwidWlkIjoxOTYyNDczNn0.b2vg9TaUFcMQekb-N0CzC0MiuTShlBX52HnWRV2RDFagKIvYIx_EBtrRRKF5RTKCC3eZSKOKZAUQAG6k6aVLbg",
   },
+  {
+    id: 2,
+    name: "Sunflowers (WB)",
+    apiToken: "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjQxMDE2djEiLCJ0eXAiOiJKV1QifQ.eyJlbnQiOjEsImV4cCI6MTc0NTY5MDE1OCwiaWQiOiIwMTkyYzc2NS01MGM2LTdkMjItODI0MC05YjFhODkzMzY1NGQiLCJpaWQiOjk2OTgyNDY4LCJvaWQiOjQwNzg0NjMsInMiOjk2LCJzaWQiOiIwZjM2NDYwMy1hODFjLTQzYWQtOTI5Yi0yYWYzMTlhYWU3M2MiLCJ0IjpmYWxzZSwidWlkIjo5Njk4MjQ2OH0.MR_oL3iLR20FPAeE5SgKoufYhPU6dkNAH6YqHm4SoK2VfEwFribBuj3dZOLVdolQgPcCppijESMcuo6KnXs8uA",
+  },
 ];
 
 const transformedCompanyOptions = computed(() => {
@@ -193,7 +198,7 @@ async function getInformationAboutCampaigns(campaignsValue) {
           original: newItem.status,
           convert: convertCampaignsStatus(newItem.status)
         };
-        // campaign.cpm = newItem.unitedParams ? newItem.unitedParams[0].catalogCPM : newItem.autoParams.cpm;
+        campaign.cpm = newItem.unitedParams ? newItem.unitedParams[0].catalogCPM : newItem.autoParams.cpm;
         // campaign.budget = newItem.dailyBudget;
         campaign.updated = new Date().toISOString();
         // campaign.enabled = newItem.searchPluseState || newItem.autoParams.active.carousel;
@@ -301,13 +306,14 @@ async function getListOfCampaigns() {
 
 onMounted(() => {
   getListOfCampaigns();
+  // setInterval(checkTimeAndRun, 60000);
 });
 
 watch(campaigns, (newCampaigns, oldCampaigns) => {
     if (newCampaigns.length > 0 && newCampaigns !== oldCampaigns) {
       getInformationAboutCampaigns(newCampaigns);
       updateCampaignBudgets(newCampaigns);
-      // updateCampaignCtr(newCampaigns);
+      updateCampaignCtr(newCampaigns);
     }
   }
 );
@@ -339,50 +345,103 @@ function updateCampaignEnabled(id, enabled) {
   }
 }
 
+// const groupedCampaigns = ref({});
+
+// watch(launchedCampaigns, (newCampaigns) => {
+//   const newCampaignsIds = newCampaigns.map(c => c.advertId);
+//   const matchingCampaigns = campaigns.value.filter(c => newCampaignsIds.includes(c.advertId));
+//   groupedCampaigns.value = matchingCampaigns.reduce((groups, campaign) => {
+//     const interval = campaign.interval;
+//     if (!groups[interval]) groups[interval] = [];
+//     groups[interval].push(campaign);
+//     return groups;
+//   }, {});
+// });
+//
+// // Функция для запуска задач
+// function start(campaignsGroup) {
+//   getInformationAboutCampaigns(campaignsGroup);
+//   updateCampaignBudgets(campaignsGroup);
+//   updateCampaignCtr(campaignsGroup);
+// }
+//
+// // Функция проверки времени и запуска задач
+// function checkTimeAndRun() {
+//   const now = new Date();
+//   const minutes = now.getMinutes();
+//   for (const interval in groupedCampaigns.value) {
+//     const campaignsGroup = groupedCampaigns.value[interval];
+//     if (minutes % interval === 0) {
+//       start(campaignsGroup);
+//     }
+//   }
+// }
+
 watch(launchedCampaigns, (newCampaigns) => {
   const newCampaignsIds = newCampaigns.map(c => c.advertId);
   const matchingCampaigns = campaigns.value.filter(c => newCampaignsIds.includes(c.advertId));
 
-  const groupedCampaigns = matchingCampaigns.reduce((groups, campaign) => {
-    const interval = campaign.interval;
-    if (!groups[interval]) {
-      groups[interval] = [];
-    }
-    groups[interval].push(campaign);
+  function groupByInterval(campaigns) {
+    const groups = {
+      15: [],
+      20: [],
+      30: []
+    };
+
+    campaigns.forEach((campaign) => {
+      if (groups[campaign.interval]) {
+        groups[campaign.interval].push(campaign);
+      }
+    });
+
     return groups;
-  }, {});
+  }
+
+  const result = groupByInterval(matchingCampaigns);
+  console.log(result);
+
+  // const groupedCampaigns = matchingCampaigns.reduce((groups, campaign) => {
+  //   const interval = campaign.interval;
+  //   if (!groups[interval]) {
+  //     groups[interval] = [];
+  //   }
+  //   groups[interval].push(campaign);
+  //   return groups;
+  // }, {});
+  //
+  // console.log("groupedCampaigns", groupedCampaigns);
 
 // Функция start для запуска задач
-  function start(campaignsGroup) {
-    getInformationAboutCampaigns(campaignsGroup);
-    updateCampaignBudgets(campaignsGroup);
-    // console.log(new Date().getMinutes(), campaignsGroup);
-    // campaignsGroup.forEach(campaign => {
-    //   console.log(`Запуск для объекта с id: ${campaign.id}, интервал: ${campaign.interval}`);
-    //   // Здесь разместите логику запуска для каждого объекта
-    // });
-  }
+//   function start(campaignsGroup) {
+//     getInformationAboutCampaigns(campaignsGroup);
+//     updateCampaignBudgets(campaignsGroup);
+//     updateCampaignCtr(campaignsGroup);
+//     // console.log(new Date().getMinutes(), campaignsGroup);
+//     // campaignsGroup.forEach(campaign => {
+//     //   console.log(`Запуск для объекта с id: ${campaign.id}, интервал: ${campaign.interval}`);
+//     //   // Здесь разместите логику запуска для каждого объекта
+//     // });
+//   }
 
 // Функция, которая проверяет текущее время
-  function checkTimeAndRun() {
-    const now = new Date();
-    const minutes = now.getMinutes();
-
-    // Проходим по всем группам интервалов
-    for (const interval in groupedCampaigns) {
-      const campaignsGroup = groupedCampaigns[interval];
-
-      // Если текущее время кратно интервалу, запускаем start для этой группы
-      if (minutes % interval === 0) {
-        start(campaignsGroup);
-      }
-    }
-  }
+//   function checkTimeAndRun() {
+//     const now = new Date();
+//     const minutes = now.getMinutes();
+//
+//     // Проходим по всем группам интервалов
+//     for (const interval in groupedCampaigns) {
+//       const campaignsGroup = groupedCampaigns[interval];
+//
+//       // Если текущее время кратно интервалу, запускаем start для этой группы
+//       if (minutes % interval === 0) {
+//         start(campaignsGroup);
+//       }
+//     }
+//   }
 
 // Устанавливаем интервал проверки каждую минуту
-  setInterval(checkTimeAndRun, 60000);
+//   setInterval(checkTimeAndRun, 60000);
 }, { deep: true });
-
 
 
 // Функция для обновления количества показов
@@ -404,10 +463,11 @@ const updateCampaignInterval = (id, value) => {
     // Перезаписываем объект кампании целиком
     campaigns.value[index] = {
       ...campaigns.value[index],
-      interval: { // Обновляем свойство interval
-        value: value,
-        repeat: value && 60 / value,
-      },
+      interval: value,
+      // interval: { // Обновляем свойство interval
+      //   value: value,
+      //   repeat: value && 60 / value,
+      // },
     };
   }
 };
@@ -438,7 +498,7 @@ const updateCampaignUpdated = (id, value) => {
             />
           </a-form-item>
         </a-col>
-        <a-col :span="4">
+        <a-col :span="6">
           <a-button
             @click="getListOfCampaigns"
             :disabled="disabledUpdateCampaign"
