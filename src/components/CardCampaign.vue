@@ -11,7 +11,7 @@ import {
   Tag as ATag,
   Switch as ASwitch,
   Skeleton as ASkeleton,
-  ConfigProvider as AConfigProvider, message,
+  ConfigProvider as AConfigProvider,
 } from "ant-design-vue";
 import {
   CheckOutlined,
@@ -61,8 +61,6 @@ function getTagColorStatus(value) {
   return tagColors[value]
 }
 
-// const state = ref(props.campaign.enabled);
-
 const intervalOptions = [
   {
     label: "15 минут",
@@ -76,25 +74,23 @@ const intervalOptions = [
     label: "30 минут",
     value: 30,
   }
-]
+];
 
 // Локальные переменные для хранения состояния
 const enabled = ref(props.campaign.enabled);
 const impressions = ref(props.campaign.impressions);
 const interval = ref(props.campaign.interval);
 
-watch(enabled, (newValue) => {
-  if (newValue) {
-    // emit("updateUpdated", new Date().toISOString());
-  }
-});
+function checkingAndDisplayingValue(label, value) {
+  return `${label} ${value !== null ? value : "<u>нет значения</u>"}`;
+}
 
 function emitEnabledChange(checked) {
   emit("updateEnabled", checked);
 }
 
 const emitInputChange = (value) => {
-  emit("updateImpressions", value);
+  emit("updateImpressions", Number(value));
 };
 
 const emitIntervalChange = (value) => {
@@ -104,9 +100,9 @@ const emitIntervalChange = (value) => {
 
 <template>
   <a-config-provider :locale="ruRu">
-    <a-card :title="campaign.name">
+    <a-card :title="campaign.name" class="card">
       <template #extra>
-        <a-switch v-model:checked="enabled" @change="emitEnabledChange">
+        <a-switch :disabled="loading" v-model:checked="enabled" @change="emitEnabledChange">
           <template #checkedChildren><check-outlined /></template>
           <template #unCheckedChildren><close-outlined /></template>
         </a-switch>
@@ -116,15 +112,19 @@ const emitIntervalChange = (value) => {
 
       <div v-else class="content">
         <div class="info">
-          <span v-if="campaign.type.convert" class="grey">{{ campaign.type.convert }}</span>
+          <span class="grey">{{ campaign.type.convert }}</span>
+
           <span class="grey">ID {{ campaign.advertId }}</span>
-          <span class="grey">Текущая ставка {{ formatNumberWithSpacesAndSymbol(campaign.cpm) }}</span>
+
+          <span v-html="checkingAndDisplayingValue('Текущая ставка', formatNumberWithSpacesAndSymbol(campaign.cpm))" class="grey"></span>
+
           <span class="grey">Бюджет {{ formatNumberWithSpacesAndSymbol(campaign.budget) }}</span>
-          <span v-if="campaign.status.original !== 11" class="grey">CTR {{ campaign.ctr }}</span>
-          <span v-if="campaign.status.original !== 11" class="grey">Показы {{ campaign.views }}</span>
-          <span>
-            <a-tag :bordered="false" :color="getTagColorStatus(campaign.status.original)">{{ campaign.status.convert }}</a-tag>
-          </span>
+
+          <span v-html="checkingAndDisplayingValue('CTR', campaign.ctr)" class="grey"></span>
+
+          <span v-html="checkingAndDisplayingValue('Показы', campaign.views )" class="grey"></span>
+
+          <span><a-tag :bordered="false" :color="getTagColorStatus(campaign.status.original)">{{ campaign.status.convert }}</a-tag></span>
         </div>
 
         <a-form ref="form" layout="vertical">
@@ -169,5 +169,9 @@ const emitIntervalChange = (value) => {
 
 .grey {
   color: rgba(0, 0, 0, 0.5);
+}
+
+.card {
+  background-color: rgba(0, 0, 0, 0.01);
 }
 </style>
